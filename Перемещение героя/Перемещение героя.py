@@ -93,29 +93,19 @@ def initialize_level(level_data):
 
 if __name__ == "__main__":
     pygame.init()
-    
-    # Инициализация дисплея
     display_surface = pygame.display.set_mode((800, 450))
     pygame.display.set_caption('Перемещение героя')
-    
-    # Загрузка данных уровня
     raw_level = load_level_map('level1.txt')
     processed_level, level_width, level_height = process_level_data(raw_level)
-    
-    # Инициализация игровых объектов
     Background()
     character = initialize_level(processed_level)
     character.screen_width = level_width
     character.screen_height = level_height
-    
-    # Основной игровой цикл
     in_menu = True
     game_active = True
-    
     while in_menu:
         background_sprite.draw(display_surface)
         pygame.display.update()
-        
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 in_menu = game_active = False
@@ -123,7 +113,6 @@ if __name__ == "__main__":
                 display_surface = pygame.display.set_mode(
                     (int(level_width), int(level_height)))
                 in_menu = False
-
     while game_active:
         environment_sprites.draw(display_surface)
         obstacle_sprites.draw(display_surface)
@@ -134,5 +123,4 @@ if __name__ == "__main__":
             if event.type == pygame.QUIT:
                 game_active = False
             character.handle_movement(event)
-
     pygame.quit()
