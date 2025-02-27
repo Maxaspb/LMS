@@ -1,118 +1,138 @@
 import pygame
 import os
 
-tiles_group1 = pygame.sprite.Group()
-tiles_group2 = pygame.sprite.Group()
-player_group = pygame.sprite.Group()
-screensaver_spr = pygame.sprite.Group()
 
+environment_sprites = pygame.sprite.Group()
+obstacle_sprites = pygame.sprite.Group()
+player_sprite = pygame.sprite.Group()
+background_sprite = pygame.sprite.Group()
 
-def load_image(name, colorkey=None):
-    fullname = os.path.join(name)
-    image = pygame.image.load(fullname)
-    return image
+def load_image(filename):
+    return pygame.image.load(os.path.join(filename))
 
+def load_level_map(filename):
+    with open(filename) as f:
+        return [line.strip() for line in f]
 
-def load_level(filename):
-    filename = filename
-    with open(filename, 'r') as mapFile:
-        level_map = [line.strip() for line in mapFile]
-    max_width = max(map(len, level_map))
-    level = list(map(lambda x: x.ljust(max_width, '.'), level_map))
-    return level, len(level[0]) * 41.8, len(level) * 50
+def process_level_data(raw_level):
+    max_width = max(len(row) for row in raw_level)
+    return [
+        row.ljust(max_width, '.') 
+        for row in raw_level
+    ], max_width * 41.8, len(raw_level) * 50
 
-
-class Screensaver(pygame.sprite.Sprite):
+class Background(pygame.sprite.Sprite):
     def __init__(self):
-        super().__init__(screensaver_spr)
-        self.image = pygame.transform.scale(load_image('fon.jpg'), (800, 450))
-        self.rect = self.image.get_rect().move(0, 0)
+        super().__init__(background_sprite)
+        self.image = pygame.transform.scale(
+            load_image('fon.jpg'), (800, 450))
+        self.rect = self.image.get_rect()
 
-
-class Tile1(pygame.sprite.Sprite):
-    def __init__(self, pos_x, pos_y):
-        super().__init__(tiles_group1)
-        self.image = load_image('box.png')
-        self.rect = self.image.get_rect().move(50 * pos_x, 50 * pos_y)
-
-
-class Tile2(pygame.sprite.Sprite):
-    def __init__(self, pos_x, pos_y):
-        super().__init__(tiles_group2)
+class EnvironmentTile(pygame.sprite.Sprite):
+    def __init__(self, x, y):
+        super().__init__(environment_sprites)
         self.image = load_image('grass.png')
-        self.rect = self.image.get_rect().move(50 * pos_x, 50 * pos_y)
+        self.rect = self.image.get_rect(
+            topleft=(x * 50, y * 50))
 
+class ObstacleTile(pygame.sprite.Sprite):
+    def __init__(self, x, y):
+        super().__init__(obstacle_sprites)
+        self.image = load_image('box.png')
+        self.rect = self.image.get_rect(
+            topleft=(x * 50, y * 50))
 
-class Player(pygame.sprite.Sprite):
-    def __init__(self, pos_x, pos_y):
-        super().__init__(player_group)
+class GameCharacter(pygame.sprite.Sprite):
+    def __init__(self, x, y):
+        super().__init__(player_sprite)
         self.image = load_image('mar.png')
-        self.rect = self.image.get_rect().move(50 * pos_x + 15, 50 * pos_y + 5)
+        self.rect = self.image.get_rect(
+            topleft=(x * 50 + 15, y * 50 + 5))
 
-    def update(self, event):
-        if event.type == pygame.KEYDOWN:
-            if event.key == pygame.K_LEFT:
-                if self.rect.x - 50 >= 0:
-                    self.rect = self.rect.move(-50, 0)
-                if pygame.sprite.spritecollide(self, tiles_group1, False):
-                    self.rect = self.rect.move(50, 0)
-            if event.key == pygame.K_RIGHT:
-                if self.rect.x + 50 <= width:
-                    self.rect = self.rect.move(50, 0)
-                if pygame.sprite.spritecollide(self, tiles_group1, False):
-                    self.rect = self.rect.move(-50, 0)
-            if event.key == pygame.K_UP:
-                if self.rect.y - 50 >= 0:
-                    self.rect = self.rect.move(0, -50)
-                if pygame.sprite.spritecollide(self, tiles_group1, False):
-                    self.rect = self.rect.move(0, 50)
-            if event.key == pygame.K_DOWN:
-                if self.rect.y + 50 <= height:
-                    self.rect = self.rect.move(0, 50)
-                if pygame.sprite.spritecollide(self, tiles_group1, False):
-                    self.rect = self.rect.move(0, -50)
-                    
+    def handle_movement(self, event):
+        if event.type != pygame.KEYDOWN:
+            return
 
-def generate_level(level):
-    new_player, x, y = None, None, None
-    for y in range(len(level)):
-        for x in range(len(level[y])):
-            if level[y][x] == '.':
-                Tile2(x, y)
-            elif level[y][x] == '#':
-                Tile1(x, y)
-            elif level[y][x] == '@':
-                Tile2(x, y)
-                new_player = Player(x, y)            
-    return new_player, x, y
+        move_vectors = {
+            pygame.K_LEFT: (-50, 0),
+            pygame.K_RIGHT: (50, 0),
+            pygame.K_UP: (0, -50),
+            pygame.K_DOWN: (0, 50)
+        }
 
+        if event.key in move_vectors:
+            dx, dy = move_vectors[event.key]
+            new_pos = self.rect.move(dx, dy)
+            
+            if self.is_valid_move(new_pos):
+                self.rect = new_pos
+                self.resolve_collision(dx, dy)
+
+    def is_valid_move(self, new_rect):
+        return (
+            0 <= new_rect.x <= self.screen_width and
+            0 <= new_rect.y <= self.screen_height
+        )
+
+    def resolve_collision(self, dx, dy):
+        if pygame.sprite.spritecollideany(self, obstacle_sprites):
+            self.rect.move_ip(-dx, -dy)
+
+def initialize_level(level_data):
+    player = None
+    for row_idx, row in enumerate(level_data):
+        for col_idx, cell in enumerate(row):
+            if cell == '@':
+                EnvironmentTile(col_idx, row_idx)
+                player = GameCharacter(col_idx, row_idx)
+            elif cell == '#':
+                ObstacleTile(col_idx, row_idx)
+            elif cell == '.':
+                EnvironmentTile(col_idx, row_idx)
+    return player
 
 if __name__ == "__main__":
     pygame.init()
-    screen = pygame.display.set_mode((800, 450))
+    
+    # Инициализация дисплея
+    display_surface = pygame.display.set_mode((800, 450))
     pygame.display.set_caption('Перемещение героя')
-    Screensaver()
-    level, width, height = load_level('level1.txt')
-    player, level_x, level_y = generate_level(level)
-    screensaver = True
-    running = True
-    while screensaver:
-        screensaver_spr.draw(screen)
-        pygame.display.flip()
+    
+    # Загрузка данных уровня
+    raw_level = load_level_map('level1.txt')
+    processed_level, level_width, level_height = process_level_data(raw_level)
+    
+    # Инициализация игровых объектов
+    Background()
+    character = initialize_level(processed_level)
+    character.screen_width = level_width
+    character.screen_height = level_height
+    
+    # Основной игровой цикл
+    in_menu = True
+    game_active = True
+    
+    while in_menu:
+        background_sprite.draw(display_surface)
+        pygame.display.update()
+        
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
-                screensaver = False
-                running = False
+                in_menu = game_active = False
             if event.type == pygame.MOUSEBUTTONDOWN:
-                screen = pygame.display.set_mode((width, height))
-                screensaver = False
-    while running:
-        tiles_group1.draw(screen)
-        tiles_group2.draw(screen)
-        player_group.draw(screen)
-        pygame.display.flip()
+                display_surface = pygame.display.set_mode(
+                    (int(level_width), int(level_height)))
+                in_menu = False
+
+    while game_active:
+        environment_sprites.draw(display_surface)
+        obstacle_sprites.draw(display_surface)
+        player_sprite.draw(display_surface)
+        pygame.display.update()
+
         for event in pygame.event.get():
-            player_group.update(event)
             if event.type == pygame.QUIT:
-                running = False
+                game_active = False
+            character.handle_movement(event)
+
     pygame.quit()
